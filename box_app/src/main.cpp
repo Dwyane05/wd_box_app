@@ -161,8 +161,8 @@ int main( int argc, char *argv[] )
 
 	DBG( "online data:%s\n length: %d\n", online.c_str(), online.length() );
 	pthread_mutex_lock( &socket_mutex );
-	SIM800.send_tcp_data( (unsigned char *)online.c_str(), online.length());
-	sleep(2);
+//	SIM800.send_tcp_data( (unsigned char *)online.c_str(), online.length());
+//	sleep(2);
 	bool inc_heart;
 	while( times++ < 10 ){
 		if( !SIM800.send_tcp_data( (unsigned char *)online.c_str(), online.length()) ){
