@@ -1,0 +1,17 @@
+HOW TO COMPILE:
+1. Install compiler
+cd /opt/
+sudo git clone -b buspay_3g_Brakemachine ssh://XXX@192.168.1.253:/volume1/git/team2_repo/allwiner_compiler 
+cd -
+
+2. Install yoko program libs
+cd /opt/
+sudo git clone ssh://XXX@192.168.1.253:/volume1/git/team2_repo/yoko_libs
+cd -
+
+3. Compiler
+cd src
+make
+
+3.1. clean project
+make clean
