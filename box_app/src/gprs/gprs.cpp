@@ -451,6 +451,8 @@ bool GPRS::send_command_check( unsigned char *cmd, int cmd_len, unsigned char *c
 //	DBG("send command len :%d---%s\n", cmd_len, cmd);
 
 	while( retry-- ){
+		//先清空发送缓冲区
+		flush_send();
 
 		ret = send_data(cmd, cmd_len );
 		if(ret <= 0) {
@@ -689,7 +691,17 @@ bool GPRS::tcp_status_check()
 	return true;
 }
 
-
+/***
+ *此函数处理接受情况比较复杂，分为
+ *  1、只接收到  Heart
+ *  2、一次接收到{}
+ *  3、多次接受到{}
+ *  4、多次接收到Heart+{}
+ *  5、一次接收到Heart+{}
+ *  6、一次接收到{}+Heart
+ *  7、多次接收到{}+Heart
+ *  8、没有接收到Heart和{
+ ***/
 bool GPRS::rec_tcp_data( std::string &data_buf, int &data_len, bool &has_heart )
 {
 #if 0
@@ -702,15 +714,15 @@ bool GPRS::rec_tcp_data( std::string &data_buf, int &data_len, bool &has_heart )
 	DBG("pid %lu tid %lu (0x%lx) call this function: rec_tcp_data()\n", (unsigned long)pid,
 	  (unsigned long)tid, (unsigned long)tid);
 #endif
-	has_heart = false;
+
 	int ret;
 	unsigned  char rec_buf[MAX_REC];
-	char json_result[MAX_REC];
 	unsigned  char tmp_buf[100];
+	has_heart = false;
 
 	memset( rec_buf, 0, MAX_REC);
 	memset( tmp_buf, 0, sizeof(tmp_buf) );
-
+	data_buf.clear();
 //	+IPD,
 	msleep(500);
 	ret = read_data( tmp_buf, sizeof(tmp_buf), 2000);
@@ -718,29 +730,109 @@ bool GPRS::rec_tcp_data( std::string &data_buf, int &data_len, bool &has_heart )
 		printf_warn("read data fail\n");
 		return false;
 	}
-	DBG( "Received temp data: %s\n", tmp_buf );
+	DBG( "read data len: %d\n", ret );
+	DBG( "Received temp data len-%d: %s\n", strlen((char *)tmp_buf), tmp_buf );
 
-	if( strcmp( (const char*)tmp_buf, "Heart" ) && strlen((const char*)tmp_buf) == sizeof("Heart") ){
+	std::string tmp_str;
+	std::string::size_type bj;
+	std::string::size_type ej;
+	tmp_str.clear();;
+	tmp_str.assign( (const char*)tmp_buf );
+
+	//1、只接收到Heart的处理
+	if( (tmp_str.npos == (bj = tmp_str.find("{"))) && (tmp_str.npos != tmp_str.find( "Heart" )) ){
 		has_heart = true;
-		data_buf = "Heart";
+		data_buf.assign( (const char*)tmp_buf );
+		data_len = data_buf.length();
+		DBG( "Received Heart and reply equal 'Heart'\n" );
 		return true;
 	}
 
-	//获取数据长度
-	char *p_l, *p_r;
-	int chr_l = '{';
-	int chr_r = '}';
-	p_l = strchr((char *)tmp_buf, chr_l);
-	if( p_l == NULL ){
-		printf_err( "First receive without '{', so judge error\n" );
+	//2、5、6一次接收全部信息的情况
+//	std::string tmp_str;
+//	tmp_str.assign( (const char*)tmp_buf );
+//	std::string::size_type bj;
+//	std::string::size_type ej;
+	if( (tmp_str.npos != (bj = tmp_str.find("{"))) && (tmp_str.npos != ( ej = tmp_str.find("}"))) ){
+		data_buf = tmp_str.substr( bj, ej-bj+1 );
+		DBG( "\n*****Found { }; bj=%d, ej=%d; msg-len=%d,msg:%s\n***************\n",
+				bj, ej, data_buf.length(), data_buf.c_str() );
+		has_heart = false;
+		data_len = data_buf.length();
+
+		if( tmp_str.npos != tmp_str.find( "Heart" ) ){
+			has_heart = true;
+			DBG( "Found heart, bool has_heart = true\n "  );
+		}
+		return true;
+	}
+
+	//8、没有接收到'{'和Heart
+	if( (tmp_str.npos == (bj = tmp_str.find("{"))) && (tmp_str.npos == tmp_str.find( "Heart" )) ){
+		printf_err( "First receive without '{' && 'Heart', so judge error\n" );
 		data_buf = "ERRORED";
+		data_len = data_buf.length();
+		has_heart = false;
 		return false;
 	}
 
+	//3、4、7多次接收到数据
+	int times = 1;
+	if( (tmp_str.npos != (bj = tmp_str.find("{"))) && (tmp_str.npos == ( ej = tmp_str.find("}"))) ){
+		strncpy( (char *)rec_buf, (const char *)tmp_buf, ret );
+		tmp_str.assign((const char *)tmp_buf);
+		while( (times < (MAX_REC/32-1)) && (ret > 0) ){
+			memset( tmp_buf, 0, sizeof(tmp_buf) );
+			ret = read_data( tmp_buf, sizeof(tmp_buf), 1000);
+			if(ret <= 0) {				//no data, break;
+				printf_warn("read data fail,break loop\n");
+				break;
+			}
+			DBG( "Received temp data: %s\n", tmp_buf );
+
+			strncat( (char *)rec_buf, (const char *)tmp_buf, ret );
+			tmp_str.append((const char*)tmp_buf);
+			times++;
+			DBG( "times: %d, Current rec_buf-%d :%s\n", times, strlen((const char*)rec_buf), rec_buf );
+			DBG( "			 Current tmp_str-%d :%s\n", tmp_str.length(), tmp_str.c_str() );
+			if( tmp_str.npos != tmp_str.find("}") ){
+				DBG( "Many times, finally received '}'\n,so break" );
+				break;
+			}
+		}
+	}
+
+	if( tmp_str.npos != tmp_str.find("CLOSED") ){
+		fprintf( stderr, "socket has closed\n" );
+		data_len= -1;
+		data_buf.assign( "CLOSED" );
+		return false;
+	}
+	//接受完成判断结果
+	if( (tmp_str.npos != (bj = tmp_str.find("{"))) && (tmp_str.npos != ( ej = tmp_str.find("}"))) ){
+		data_buf = tmp_str.substr( bj, ej-bj+1 );
+		DBG( "\n\n\n*****many times Received; Found { }; bj=%d, ej=%d; msg-len=%d,msg:%s\n***************\n\n\n",
+				bj, ej, data_buf.length(), data_buf.c_str() );
+		has_heart = false;
+		data_len = data_buf.length();
+
+		if( tmp_str.npos != tmp_str.find( "Heart" ) ){
+			has_heart = true;
+			DBG( "Found heart, bool has_heart = true\n "  );
+		}
+		return true;
+	}
+	data_len = data_buf.length();
+	DBG( "string data_but length: %d, %s\n", data_buf.length(), data_buf.c_str() );
+
+	return true;
+#if 0
 	strncpy( (char *)rec_buf, (const char *)tmp_buf, ret );
+	DBG( "rec_buf-len: %d --%s\n", strlen((char *)rec_buf), rec_buf );
+
 
 	int times = 1;
-	while( times < (MAX_REC/32-1) ){
+	while( (times < (MAX_REC/32-1)) && (strchr((char *)rec_buf, chr_r) == NULL) ){
 		memset( tmp_buf, 0, sizeof(tmp_buf) );
 		ret = read_data( tmp_buf, sizeof(tmp_buf), 1000);
 		if(ret < 0) {
@@ -762,6 +854,7 @@ bool GPRS::rec_tcp_data( std::string &data_buf, int &data_len, bool &has_heart )
 	if(times == (MAX_REC/32-1) && strchr((char *)tmp_buf, chr_r) == NULL ){
 		printf_err( "Recived too much times or can't recived '{', so judge error\n" );
 		data_buf = "ERRORED";
+		data_len = data_buf.length();
 		return false;
 	}
 	char heart[] = "Heart";
@@ -772,15 +865,14 @@ bool GPRS::rec_tcp_data( std::string &data_buf, int &data_len, bool &has_heart )
 	p_l = strchr((char *)rec_buf, chr_l);
 	p_r = strchr((char *)rec_buf, chr_r);
 
+	memset( json_result, 0, MAX_REC);
 	int length_l_r = p_r - p_l + 1;
 	if( length_l_r > 0 ){
 		strncpy(json_result, p_l, length_l_r);
 	}
 
-	data_buf = json_result;
-	DBG( "Received data len: %d, %s\n", data_buf.length(), data_buf.c_str() );
+#endif
 
-	return true;
 #if 0
 	//获取数据长度
 	char *p_l, *p_r;

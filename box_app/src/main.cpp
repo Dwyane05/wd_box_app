@@ -151,7 +151,6 @@ int main( int argc, char *argv[] )
    DBG( "create_capture_process_thread success\n" );
    sleep(1);
 
-//	unsigned char test[] = "{\"dev_id\":\"866710036780986\",\"switch\":\"1\",\"version\":\"1.0.0\"}\x1A";
 //	std::string online = "{\"dev_id\":\"866710036780986\",\"switch\":\"1\",\"version\":\"1.0.0\"}\x1A";
 	std::string online = "{\"dev_id\":\"";
 	online += gprs_imei;
@@ -162,36 +161,33 @@ int main( int argc, char *argv[] )
 	DBG( "online data:%s\n length: %d\n", online.c_str(), online.length() );
 	pthread_mutex_lock( &socket_mutex );
 //	SIM800.send_tcp_data( (unsigned char *)online.c_str(), online.length());
-//	sleep(2);
-	bool inc_heart;
-	while( times++ < 10 ){
-		if( !SIM800.send_tcp_data( (unsigned char *)online.c_str(), online.length()) ){
-			sleep(2);
-			continue;
-		}
+
+	times = 0;
+	while( !SIM800.send_tcp_data( (unsigned char *)online.c_str(), online.length()) && (times++ < 5) ) {
+		fprintf( stderr, "Send register message failed %d times\n", times );
 		sleep(2);
-		if( !SIM800.rec_tcp_data(reply,length, inc_heart) ){
-			sleep(2);
-			continue;
-		}else{
-			if( reply.find("ERRORED") || inc_heart ){
-				continue;
-			}
-			break;
-		}
 	}
+	if( times == 5 )
+		err_quit( "Send register failed, so exit\n" );
+
+	sleep(2);
+
+	bool inc_heart;
+	SIM800.rec_tcp_data(reply,length, inc_heart);
 	DBG( "string data:%s\n length: %d\n", reply.c_str(), length );
 	pthread_mutex_unlock(&socket_mutex );
 
 	if( times >= 9 )
 		err_quit( "Register device error\n" );
 
-	analysis_type(reply);
+	if ( analysis_type(reply) == 1){
+		DBG( "analysis type == 1\n" );
+	}
 	if(!device_register_confirm(reply, ver)){
 		//		system( "reboot" );
 		DBG( "device register error\n" );
 	}
-
+	DBG( "device register confirmed right,please continue.....\n" );
 
 	string::size_type bj;
 	string::size_type ej;
@@ -275,6 +271,4 @@ int main( int argc, char *argv[] )
 	exit(0);
 
 }
-
-
 
