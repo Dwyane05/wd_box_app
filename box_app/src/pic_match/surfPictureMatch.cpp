@@ -19,27 +19,35 @@ using namespace cv::xfeatures2d;
 
 int surfFeatureDotMatch(Mat src, int s);
 
-Rect rect1[] = { Rect(Point(62, 12), Point(170, 336)),Rect(Point(164, 16), Point(271, 190)),Rect(Point(272, 25), Point(367, 193)),
-Rect(Point(367, 26), Point(456, 193)),Rect(Point(465, 32), Point(547, 195)) ,Rect(Point(172, 192), Point(276, 337)) ,
-Rect(Point(271, 190), Point(360, 337)) ,Rect(Point(367, 193), Point(448, 339)) ,Rect(Point(456, 193), Point(531, 339)) ,
-Rect(Point(80, 335), Point(181, 467)) ,Rect(Point(181, 338), Point(353, 470)) ,Rect(Point(360, 337), Point(438, 467)),
-Rect(Point(448, 339), Point(518, 466)) };
+//Rect rect1[] = { Rect(Point(62, 12), Point(170, 336)),Rect(Point(164, 16), Point(271, 190)),Rect(Point(272, 25), Point(367, 193)),
+//Rect(Point(367, 26), Point(456, 193)),Rect(Point(465, 32), Point(547, 195)) ,Rect(Point(172, 192), Point(276, 337)) ,
+//Rect(Point(271, 190), Point(360, 337)) ,Rect(Point(367, 193), Point(448, 339)) ,Rect(Point(456, 193), Point(531, 339)) ,
+//Rect(Point(80, 335), Point(181, 467)) ,Rect(Point(181, 338), Point(353, 470)) ,Rect(Point(360, 337), Point(438, 467)),
+//Rect(Point(448, 339), Point(518, 466)) };
+Rect rect1[] = { Rect(Point(97, 43), Point(190, 338)),Rect(Point(188, 47), Point(283, 201)),
+		Rect(Point(285, 49), Point(374, 201)),Rect(Point(382, 49), Point(464, 199)),
+		Rect(Point(475, 47), Point(555, 201)) ,Rect(Point(194, 203), Point(289, 343)) ,
+		Rect(Point(292, 205), Point(372, 342)) ,Rect(Point(381, 206), Point(461, 345)) ,
+		Rect(Point(469, 201), Point(543, 345)) ,Rect(Point(112, 343), Point(201, 474)) ,
+		Rect(Point(202, 343), Point(370, 476)) ,Rect(Point(374, 349), Point(455, 477)),
+		Rect(Point(462, 346), Point(538, 478)) };
+
 vector<Mat> roi;
-Mat test1 = imread("/root/sample/caiyang1.jpg");
-Mat test2 = imread("/root/sample/caiyang2.jpg");
-Mat test3 = imread("/root/sample/caiyang3.jpg");
-Mat test4 = imread("/root/sample/caiyang4.jpg");
-Mat test5 = imread("/root/sample/caiyang5.jpg");
-Mat test6 = imread("/root/sample/caiyang6.jpg");
-Mat test7 = imread("/root/sample/caiyang7.jpg");
-Mat test8 = imread("/root/sample/caiyang8.jpg");
-Mat test9 = imread("/root/sample/caiyang9.jpg");
-Mat test10 = imread("/root/sample/caiyang10.jpg");
-Mat test11 = imread("/root/sample/caiyang11.jpg");
-Mat test12 = imread("/root/sample/caiyang12.jpg");
-Mat test13 = imread("/root/sample/caiyang13.jpg");
-Mat test14 = imread("/root/sample/caiyang14.jpg");
-Mat test[14] = { test1,test2,test3,test4,test5,test6,test7,test8,test9,test10,test11,test12,test13,test14 };
+//Mat test1 = imread("/root/sample/caiyang1.jpg");
+//Mat test2 = imread("/root/sample/caiyang2.jpg");
+//Mat test3 = imread("/root/sample/caiyang3.jpg");
+//Mat test4 = imread("/root/sample/caiyang4.jpg");
+//Mat test5 = imread("/root/sample/caiyang5.jpg");
+//Mat test6 = imread("/root/sample/caiyang6.jpg");
+//Mat test7 = imread("/root/sample/caiyang7.jpg");
+//Mat test8 = imread("/root/sample/caiyang8.jpg");
+//Mat test9 = imread("/root/sample/caiyang9.jpg");
+//Mat test10 = imread("/root/sample/caiyang10.jpg");
+//Mat test11 = imread("/root/sample/caiyang11.jpg");
+//Mat test12 = imread("/root/sample/caiyang12.jpg");
+//Mat test13 = imread("/root/sample/caiyang13.jpg");
+//Mat test14 = imread("/root/sample/caiyang14.jpg");
+//Mat test[14] = { test1,test2,test3,test4,test5,test6,test7,test8,test9,test10,test11,test12,test13,test14 };
 Mat frame;
 Mat useless_frame;
 vector<Mat> train_set;
@@ -57,6 +65,7 @@ string IntToString(int &i)
 
 bool pic_match_init( int camera )
 {
+#if 0
 //	clock_t start, finish;
 	for (unsigned int i = 0; i < 14; i++){
 		train_set.push_back(test[i]);
@@ -67,6 +76,17 @@ bool pic_match_init( int camera )
 	vector<vector<KeyPoint> > keyPoint2;
 	surf->detect(train_set, keyPoint2);
 	surf->compute(train_set, keyPoint2, testDesc);
+#endif
+
+	FileStorage fsread("/root/sample/yangben.xml", FileStorage::READ);
+	FileNode src = fsread.root();
+	FileNodeIterator it;
+	for (it = src.begin(); it < src.end(); it++) {
+		Mat dst;
+		(*it) >> dst;
+		testDesc.push_back(dst);
+	}
+	cout << "Read xml finish："<<endl;
 
 //	start = clock();
 
@@ -104,6 +124,7 @@ bool get_good_num( std::string &result )
 		return false;
 	}
 	cvtColor( frame, frame, COLOR_RGB2GRAY );
+	//如果查看关门时图像，打开配置
 #if 0
 	char temp[10];
 	int n = 4;
@@ -118,7 +139,7 @@ bool get_good_num( std::string &result )
 	//imshow("src:", src);
 
 	for (unsigned int j = 0; j < 13; j++){
-		a=surfFeatureDotMatch(roi[j], 300);
+		a=surfFeatureDotMatch(roi[j], 200);
 		if(a<0) continue;
 		count[a] += 1;
 
