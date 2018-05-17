@@ -268,13 +268,29 @@ int door_close_respond( GPRS *respond_socket, struct opendoor_store_msg *open_do
 	good.append( "\x1A" );
 	DBG( "length: %d--%s\n", good.length(), good.c_str() );
 
-	int times = 1;
+	std::string close_result;
+	int close_result_len = 0;
+	bool heart_care = false;
+
+	int times = 10;
 	while( times-- ){		//end_tcp_data_no_chk
-		if( 0 == respond_socket->send_tcp_data( (unsigned char *)good.c_str(), good.length() ) ){
-			DBG("Send close door command success\n");
-			return 0;
-		}
-	}
+		if( !respond_socket->send_tcp_data( (unsigned char *)good.c_str(), good.length() ) ){
+			DBG("Send close door message failed %d times\n", times);
+			sleep_us(100000);
+			continue;
+		}else{				//成功发送，关门后的商品数据
+			sleep_us(100000);
+			if( !respond_socket->rec_tcp_data( close_result, close_result_len, heart_care ) ){
+				fprintf( stderr, "received close door response failed-left %d times, so continue received \n", times );
+				continue;
+			}else{			//成功接受服务器返回信息，包含{}
+				if ( colse_door_confirm( close_result ) ){	//确认没问题
+					DBG( "close door confirm no problem, so return 0\n" );
+					return 0;
+				}//?end of if
+			}//?endof else
+		}//?end of else
+	}//?end of while
 
 	DBG("Try to send close door message 1 times failed\n");
 	return -1;

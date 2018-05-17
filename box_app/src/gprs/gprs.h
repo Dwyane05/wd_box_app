@@ -10,12 +10,19 @@
 
 
 #include "serial.h"
+#include <string>
+
+struct pre_cache{
+	std::string	orig_text;
+	bool has_text;
+};
 
 class GPRS : public serial{
 private:
 	int fd;
 	bool echo_enable;
 	bool nochk;
+	pre_cache gprs_cache;
 public:
 	GPRS();
 

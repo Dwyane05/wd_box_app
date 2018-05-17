@@ -163,6 +163,35 @@ void close_door_msg_creat_p( std::string &msg_buf, std::string &id )
 	DBG( "close door msg create p:" );
 	std::cout <<  msg_buf << std::endl;
 }
+
+bool colse_door_confirm( std::string &reply_info )
+{
+	std::string category, status, error_no;
+	Json::Reader reader;
+	Json::Value value;
+
+	if (reader.parse(reply_info, value)){
+		category = value["category"].asString();
+		if(category.compare("3") ){
+			fprintf( stderr, "open door cmd category error\n" );
+			return false;
+		}
+		status = value["status"].asString();
+		if( status.compare("0") ){
+			fprintf( stderr, "open door cmd status error\n" );
+			return false;
+		}
+
+		error_no = value["error_no"].asString();
+		if( error_no.compare("0") ){
+			fprintf( stderr, "open door cmd error_no error\n" );
+			return false;
+		}
+		return true;
+	}
+	return false;
+}
+
 #if 0
 void wg_change_msg_creat_p( std::string &msg_buf, struct food_weight *fd_wg )
 {

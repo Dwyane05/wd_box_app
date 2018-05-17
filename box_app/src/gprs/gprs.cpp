@@ -16,7 +16,7 @@
 #include "weiding.h"
 #include "gprs.h"
 #include "lock.h"
-
+#include "hodgepodge.h"
 
 //#define DBG_EN  0
 //#if (DBG_EN == 1)
@@ -40,6 +40,8 @@ GPRS::GPRS( void )
 	fd = -1;
 	echo_enable = true;
 	nochk = false;
+	gprs_cache.orig_text.clear();
+	gprs_cache.has_text = false;
 }
 
 
@@ -476,7 +478,16 @@ bool GPRS::send_command_check( unsigned char *cmd, int cmd_len, unsigned char *c
 		if( strstr((const char *)GsmRcv, (const char *)check) == NULL){
 			DBG("error-----------cmd: %s\n back: %s\n", cmd, GsmRcv);
 			msleep(50);
-			DBG("command back right: %s\n", GsmRcv);
+			if( !gprs_cache.has_text ){
+				gprs_cache.orig_text.assign( (const char *)GsmRcv );
+				gprs_cache.has_text = true;
+				DBG( "gprs_cache.text assign: %s\n", gprs_cache.orig_text.c_str() );
+			}else{
+				gprs_cache.orig_text.append((const char *)GsmRcv );
+				gprs_cache.has_text = true;
+				DBG( "gprs_cache.text after append: %s\n", gprs_cache.orig_text.c_str() );
+			}
+
 			continue;
 		}else{
 //			DBG("command back right: %s\n", GsmRcv);
@@ -562,11 +573,45 @@ bool GPRS::send_tcp_data( unsigned char * tcp_data, int data_len )
 //	unsigned char data_start[] = "\x1A";
 	unsigned char tcp_data_chk[] = "SEND OK";
 
-	int times = 3;
+	int times = 5;
+	int times_1 = 5;
 	bool flags = true;
 
 //	if( !send_command_check(tcp_status, sizeof(tcp_status), ok_chk)) return false;
+	while(times_1--){		//发送消息内容主循环，5次
+		times = 5;
+		while( times-- ){			//发送开始头循环，5次
+			if( !send_command_check(tcp_start, sizeof(tcp_start), tcp_start_chk)) {
+				flags = false;
+				msleep(500);
+				continue;
+			}else{
+				flags = true;
+				break;
+			}
+		}
 
+		if( (flags == false) || (times <= 0) ){
+			printf_err( "send tcp start error\n" );
+			return false;
+		}
+
+	//	DBG("send command len :%d---%s\n", data_len, tcp_data );
+		if( !send_command_check(tcp_data, data_len, tcp_data_chk)){
+			err_sys( "Send command main text failed, but not over %d times, so continue ...\n", times_1 );
+			continue;
+		}else{
+			DBG( "Send command main text success, %d times, so break && return true!\n", times_1 );
+			break;
+		}
+	}
+	if( times_1 <= 0 ){
+		err_sys( "send tcp data many times, but failed\n" );
+		return false;
+	}
+
+	return true;
+#if 0
 	while( times-- ){
 		if( !send_command_check(tcp_start, sizeof(tcp_start), tcp_start_chk)) {
 			flags = false;
@@ -589,6 +634,7 @@ bool GPRS::send_tcp_data( unsigned char * tcp_data, int data_len )
 //	if( !send_command_check(data_start, sizeof(data_start), tcp_data_chk))  return false;
 
 	return true;
+#endif
 }
 
 bool GPRS::send_tcp_data_no_chk( unsigned char * tcp_data, int data_len )
@@ -653,14 +699,25 @@ bool GPRS::tcp_status_check()
 	int times = 100;		//3分钟
 	while( times-- ){
 		//先清空接受缓冲区
-		flush_recv();
+//		flush_recv();
+		memset(GsmRcv, 0, sizeof(GsmRcv));
+		ret = read_data(GsmRcv, 150, 100);
+		if( ret > 0 ){
+			if( gprs_cache.has_text ){
+				gprs_cache.orig_text.append( (const char *)GsmRcv );
+				gprs_cache.has_text = true;
+			}else{
+				gprs_cache.orig_text.assign( (const char *)GsmRcv );
+				gprs_cache.has_text = true;
+			}
+		}
 
 		ret = send_data(tcp_status, sizeof(tcp_status) );
 		if(ret <= 0) {
 			printf_err("send data fail\n");
 			continue;
 		}
-
+		msleep(100);
 		memset(GsmRcv, 0, sizeof(GsmRcv));
 		ret = read_data(GsmRcv, 150, 2000);
 		if(ret < 0) {
@@ -723,20 +780,58 @@ bool GPRS::rec_tcp_data( std::string &data_buf, int &data_len, bool &has_heart )
 	memset( rec_buf, 0, MAX_REC);
 	memset( tmp_buf, 0, sizeof(tmp_buf) );
 	data_buf.clear();
-//	+IPD,
-	msleep(500);
-	ret = read_data( tmp_buf, sizeof(tmp_buf), 2000);
-	if(ret < 0) {
-		printf_warn("read data fail\n");
-		return false;
-	}
-	DBG( "read data len: %d\n", ret );
-	DBG( "Received temp data len-%d: %s\n", strlen((char *)tmp_buf), tmp_buf );
 
 	std::string tmp_str;
 	std::string::size_type bj;
 	std::string::size_type ej;
-	tmp_str.clear();;
+	tmp_str.clear();
+
+	bool cache_categray = false;
+	bool cache_heart = false;
+
+	has_heart = false;
+	//读数据前先判断gprs_cache内容；
+	if( gprs_cache.has_text  ){
+		if( (gprs_cache.orig_text.npos != (bj = gprs_cache.orig_text.find("{"))) &&
+				(gprs_cache.orig_text.npos != ( ej = gprs_cache.orig_text.find("}"))) ){
+			tmp_str = gprs_cache.orig_text.substr( bj, ej-bj+1 );
+			DBG( "gprs_cache.has_text:%s\n", gprs_cache.orig_text.c_str() );
+			if( analysis_type(tmp_str) > 0 ){
+				data_buf.assign( tmp_str.c_str() );
+				cache_categray = true;
+				tmp_str.clear();
+				DBG( "Has clear, must be empty. tmp_str.c_str():%s\n", tmp_str.c_str() );
+				DBG( "data_buf.c_str():%s\n", data_buf.c_str() );
+			}
+		}
+		if( gprs_cache.orig_text.npos != gprs_cache.orig_text.find( "Heart" ) ){
+			has_heart = true;
+			cache_heart = true;
+			DBG( "Previous cache find 'Heart', so has_heart = true;\n" );
+		}
+
+		if( cache_heart ||  cache_categray ){
+			DBG( "Has clear, must be empty. tmp_str.c_str():%s\n", tmp_str.c_str() );
+			DBG( "data_buf.c_str():%s\n", data_buf.c_str() );
+			gprs_cache.orig_text.clear();
+			gprs_cache.has_text = false;
+
+			return true;
+		}
+	}
+	gprs_cache.orig_text.clear();
+	gprs_cache.has_text = false;
+
+//	+IPD,
+	msleep(500);
+	ret = read_data( tmp_buf, sizeof(tmp_buf), 2000);
+	if(ret < 0) {
+//		printf_warn("read data fail\n");
+		return false;
+	}
+	DBG( "ret = %d, Received temp data len-%d: %s\n", ret, strlen((char *)tmp_buf), tmp_buf );
+
+	tmp_str.clear();
 	tmp_str.assign( (const char*)tmp_buf );
 
 	//1、只接收到Heart的处理
@@ -744,7 +839,7 @@ bool GPRS::rec_tcp_data( std::string &data_buf, int &data_len, bool &has_heart )
 		has_heart = true;
 		data_buf.assign( (const char*)tmp_buf );
 		data_len = data_buf.length();
-		DBG( "Received Heart and reply equal 'Heart'\n" );
+//		DBG( "Received Heart and reply equal 'Heart'\n" );
 		return true;
 	}
 

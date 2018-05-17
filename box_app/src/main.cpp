@@ -238,7 +238,7 @@ int main( int argc, char *argv[] )
 				}
 			}	//接受消息中有{}
 
-			if( reply.npos != reply.find("Heart") ){
+			if( (reply.npos != reply.find("Heart")) || inc_heart ){
 				mes_buf.mtype = HEART_TYPE;
 				mes_buf.mtext = reply;
 

@@ -22,6 +22,9 @@ bool opendoor_cmd_confirm( std::string &reply_info, struct opendoor_store_msg *o
 void close_door_creat_type( std::string &msg_buf, std::string &id );
 
 void close_door_msg_creat_p( std::string &msg_buf, std::string &id );
+
+bool colse_door_confirm( std::string &reply_info );
+
 #if 0
 void wg_change_msg_creat_p( std::string &msg_buf, struct food_weight *fd_wg );
 #endif
